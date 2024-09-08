@@ -15,6 +15,7 @@ use rand::rngs::{OsRng, ThreadRng};
 use rand::Rng;
 use std::env::current_dir;
 use std::fs;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 fn u64_to_bytes(x: u64) -> [u8; 32] {
@@ -60,9 +61,9 @@ const EXPECTED_POWERS: [[u64; 4usize]; 11] = [
 pub fn bytes_to_bls_field_test<TFr: Fr>() {
     let x: u64 = 329;
     let x_bytes = u64_to_bytes(x);
-    let x_fr = TFr::from_bytes(&x_bytes).unwrap();
+    let x_fr = TFr::from_be_bytes(x_bytes).unwrap();
 
-    assert_eq!(x_fr.to_bytes(), x_bytes);
+    assert_eq!(x_fr.to_be_bytes(), x_bytes);
     assert_eq!(x, x_fr.to_u64_arr()[0]);
 }
 
@@ -71,7 +72,7 @@ pub fn compute_powers_test<TFr: Fr>(compute_powers: &dyn Fn(&TFr, usize) -> Vec<
     let n = 11;
 
     let x_bytes: [u8; 32] = u64_to_bytes(x);
-    let x_fr = TFr::from_bytes(&x_bytes).unwrap();
+    let x_fr = TFr::from_be_bytes(x_bytes).unwrap();
     let powers = compute_powers(&x_fr, n);
 
     for (p, expected_p) in powers.iter().zip(EXPECTED_POWERS.iter()) {
@@ -198,7 +199,7 @@ pub fn compute_and_verify_kzg_proof_round_trip_test<
 
     let z_fr = {
         let z_bytes = generate_random_field_element_bytes(&mut rng);
-        TFr::from_bytes(&z_bytes).unwrap()
+        TFr::from_be_bytes(z_bytes).unwrap()
     };
 
     let blob = {
@@ -309,7 +310,7 @@ pub fn compute_and_verify_kzg_proof_fails_with_incorrect_proof_test<
 
     let z_fr = {
         let z_bytes = generate_random_field_element_bytes(&mut rng);
-        TFr::from_bytes(&z_bytes).unwrap()
+        TFr::from_be_bytes(z_bytes).unwrap()
     };
 
     let blob = {
@@ -622,7 +623,10 @@ pub fn test_vectors_compute_kzg_proof<
                     continue;
                 }
             },
-            match TFr::from_bytes(&test.input.get_z_bytes()) {
+            match <&[u8] as TryInto<&[u8; 32]>>::try_into(test.input.get_z_bytes().as_slice())
+                .map_err(|_| "Invalid Fr".to_string())
+                .and_then(|it| TFr::from_be_bytes(*it))
+            {
                 Ok(z) => z,
                 Err(_) => {
                     assert!(test.get_output_bytes().is_none());
@@ -633,9 +637,13 @@ pub fn test_vectors_compute_kzg_proof<
 
         let output = (
             test.get_output_bytes()
-                .and_then(|bytes| TG1::from_bytes(&bytes.0).ok()), // proof
-            test.get_output_bytes()
-                .and_then(|bytes| TFr::from_bytes(&bytes.1).ok()), // y
+                .and_then(|bytes| TG1::from_bytes(&bytes.0.as_slice()).ok()), // proof
+            test.get_output_bytes().and_then(|bytes| {
+                TFr::from_be_bytes(
+                    *<&[u8] as TryInto<&[u8; 32]>>::try_into(bytes.1.as_slice()).unwrap(),
+                )
+                .ok()
+            }), // y
         );
 
         // Compute the proof
@@ -753,14 +761,20 @@ pub fn test_vectors_verify_kzg_proof<
                     continue;
                 }
             },
-            match TFr::from_bytes(&test.input.get_z_bytes()) {
+            match <&[u8] as TryInto<&[u8; 32]>>::try_into(test.input.get_z_bytes().as_slice())
+                .map_err(|_| "Invalid Fr".to_string())
+                .and_then(|bytes| TFr::from_be_bytes(*bytes))
+            {
                 Ok(z) => z,
                 Err(_) => {
                     assert!(test.get_output().is_none());
                     continue;
                 }
             },
-            match TFr::from_bytes(&test.input.get_y_bytes()) {
+            match <&[u8] as TryInto<&[u8; 32]>>::try_into(test.input.get_y_bytes().as_slice())
+                .map_err(|_| "Invalid Fr".to_string())
+                .and_then(|bytes| TFr::from_be_bytes(*bytes))
+            {
                 Ok(y) => y,
                 Err(_) => {
                     assert!(test.get_output().is_none());

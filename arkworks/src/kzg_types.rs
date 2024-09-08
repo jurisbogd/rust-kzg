@@ -151,9 +151,75 @@ impl KzgFr for ArkFr {
             })
     }
 
+    fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let big_int = BigInteger256::new([
+            u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+            u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+            u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+            u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+        ]);
+
+        if !big_int.is_zero() && !bigint_check_mod_256(&big_int.0) {
+            return Err("Invalid scalar".to_string());
+        }
+
+        Ok(Self {
+            fr: Fr::new(big_int),
+        })
+    }
+
+    fn from_be_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        Self {
+            fr: Fr::new(BigInteger256::new([
+                u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+                u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+                u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+                u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+            ])),
+        }
+    }
+
+    fn from_le_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let big_int = BigInteger256::new([
+            u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
+            u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+            u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
+            u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+        ]);
+
+        if !big_int.is_zero() && !bigint_check_mod_256(&big_int.0) {
+            return Err("Invalid scalar".to_string());
+        }
+
+        Ok(Self {
+            fr: Fr::new(big_int),
+        })
+    }
+
+    fn from_le_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        Self {
+            fr: Fr::new(BigInteger256::new([
+                u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
+                u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+                u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
+                u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+            ])),
+        }
+    }
+
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let big_int: BigInteger256 = Fr::into(self.fr);
+        big_int.to_bytes_le().try_into().unwrap()
+    }
+
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let big_int: BigInteger256 = Fr::into(self.fr);
+        big_int.to_bytes_be().try_into().unwrap()
+    }
+
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_bytes(&bytes)
+        Self::from_be_bytes(bytes.try_into()..map_err(|_| "Invalid hex length".to_string())?)
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {

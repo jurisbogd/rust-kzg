@@ -724,7 +724,12 @@ pub fn bytes_to_blob<TFr: Fr>(bytes: &[u8]) -> Result<Vec<TFr>, String> {
 
     bytes
         .chunks(BYTES_PER_FIELD_ELEMENT)
-        .map(|res| TFr::from_be_bytes(res.try_into().map_err(|_| "Invalid scalar size".to_string())?))
+        .map(|res| {
+            TFr::from_be_bytes(
+                res.try_into()
+                    .map_err(|_| "Invalid scalar size".to_string())?,
+            )
+        })
         .collect()
 }
 

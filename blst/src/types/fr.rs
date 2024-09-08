@@ -5,10 +5,10 @@ use alloc::string::String;
 use alloc::string::ToString;
 
 use blst::{
-    blst_bendian_from_scalar, blst_lendian_from_scalar, blst_fr, blst_fr_add, blst_fr_cneg, blst_fr_eucl_inverse,
+    blst_bendian_from_scalar, blst_fr, blst_fr_add, blst_fr_cneg, blst_fr_eucl_inverse,
     blst_fr_from_scalar, blst_fr_from_uint64, blst_fr_inverse, blst_fr_mul, blst_fr_sqr,
-    blst_fr_sub, blst_scalar, blst_scalar_fr_check, blst_scalar_from_bendian, blst_scalar_from_lendian, blst_scalar_from_fr,
-    blst_uint64_from_fr,
+    blst_fr_sub, blst_lendian_from_scalar, blst_scalar, blst_scalar_fr_check,
+    blst_scalar_from_bendian, blst_scalar_from_fr, blst_scalar_from_lendian, blst_uint64_from_fr,
 };
 use kzg::eip_4844::BYTES_PER_FIELD_ELEMENT;
 use kzg::Fr;
@@ -162,7 +162,12 @@ impl Fr for FsFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_be_bytes(bytes.as_slice().try_into().map_err(|_| "Invalid size".to_string())?)
+        Self::from_be_bytes(
+            bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| "Invalid size".to_string())?,
+        )
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {

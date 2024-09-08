@@ -71,9 +71,7 @@ const fn get_sequential_window_size(window: BgmwWindow) -> usize {
     {
         match window {
             BgmwWindow::Sync(wnd) => wnd,
-            BgmwWindow::Parallel(_) => {
-                panic!("Cannot use parallel BGMW table in sequential version")
-            }
+            BgmwWindow::Parallel((_nx, _ny, wnd)) => wnd,
         }
     }
 }
@@ -268,6 +266,10 @@ impl<
             BgmwWindow::Sync(_) => return self.multiply_sequential(scalars),
             BgmwWindow::Parallel(values) => values,
         };
+
+        if nx > npoints {
+            return self.multiply_sequential(scalars);
+        }
 
         let scalars = scalars.iter().map(TFr::to_scalar).collect::<Vec<_>>();
         let scalars = &scalars[..];

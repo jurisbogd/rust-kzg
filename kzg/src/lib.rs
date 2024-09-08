@@ -21,15 +21,19 @@ pub trait Fr: Default + Clone + PartialEq + Sync {
     #[cfg(feature = "rand")]
     fn rand() -> Self;
 
-    #[deprecated(note="please use `from_le_bytes`/`from_be_bytes` instead")]
+    #[deprecated(note = "please use `from_le_bytes`/`from_be_bytes` instead")]
     fn from_bytes(bytes: &[u8]) -> Result<Self, String>;
 
     fn from_le_bytes(bytes: [u8; 32]) -> Result<Self, String>;
     fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String>;
 
-    #[deprecated(note="please use `from_le_bytes_unchecked`/`from_be_bytes_unchecked` instead")]
+    #[deprecated(note = "please use `from_le_bytes_unchecked`/`from_be_bytes_unchecked` instead")]
     fn from_bytes_unchecked(bytes: &[u8]) -> Result<Self, String> {
-        Ok(Self::from_be_bytes_unchecked(bytes.try_into().map_err(|_| "Invalid scalar size".to_string())?))
+        Ok(Self::from_be_bytes_unchecked(
+            bytes
+                .try_into()
+                .map_err(|_| "Invalid scalar size".to_string())?,
+        ))
     }
 
     fn from_le_bytes_unchecked(bytes: [u8; 32]) -> Self;
@@ -42,7 +46,7 @@ pub trait Fr: Default + Clone + PartialEq + Sync {
 
     fn from_u64(u: u64) -> Self;
 
-    #[deprecated(note="please use `to_le_bytes`/`to_be_bytes` instead")]
+    #[deprecated(note = "please use `to_le_bytes`/`to_be_bytes` instead")]
     fn to_bytes(&self) -> [u8; 32];
 
     fn to_le_bytes(&self) -> [u8; 32];

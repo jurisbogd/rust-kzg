@@ -146,7 +146,7 @@ impl KzgFr for ArkFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_bytes(&bytes)
+        Self::from_be_bytes(bytes.try_into().map_err(|_| "Invalid hex length".to_string())?)
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {
@@ -161,7 +161,7 @@ impl KzgFr for ArkFr {
 
     fn to_bytes(&self) -> [u8; 32] {
         let big_int_256: BigInteger256 = Fr::into(self.fr);
-        <[u8; 32]>::try_from(big_int_256.to_bytes_be()).unwrap()
+        big_int_256.to_bytes_be().try_into().unwrap()
     }
 
     fn to_u64_arr(&self) -> [u64; 4] {
@@ -237,6 +237,61 @@ impl KzgFr for ArkFr {
 
     fn to_scalar(&self) -> Scalar256 {
         Scalar256::from_u64(self.fr.0 .0)
+    }
+
+    fn from_le_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let big_int = BigInteger256::new([
+            u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
+            u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+            u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
+            u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+        ]);
+
+        if !big_int.is_zero() && !bigint_check_mod_256(&big_int.0) {
+            return Err("Invalid scalar".to_string());
+        }
+
+        Ok(Self {
+            fr: Fr::from(big_int),
+        })
+    }
+
+    fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let storage = [
+            u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+            u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+            u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+            u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+        ];
+        let big_int = BigInteger256::new(storage);
+        if !big_int.is_zero() && !bigint_check_mod_256(&big_int.0) {
+            return Err("Invalid scalar".to_string());
+        }
+        Ok(Self {
+            fr: Fr::from(big_int),
+        })
+    }
+
+    fn from_le_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        Self {
+            fr: Fr::from_le_bytes_mod_order(&bytes),
+        }
+    }
+
+    fn from_be_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        Self {
+            fr: Fr::from_be_bytes_mod_order(&bytes),
+        }
+    }
+
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let big_int_256: BigInteger256 = Fr::into(self.fr);
+        big_int_256.to_bytes_le().try_into().unwrap()
+    }
+
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let big_int_256: BigInteger256 = Fr::into(self.fr);
+        big_int_256.to_bytes_be().try_into().unwrap()
     }
 }
 

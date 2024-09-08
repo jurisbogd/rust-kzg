@@ -59,7 +59,7 @@ pub fn bench_eip_4844<
     let fields: Vec<TFr> = (0..MAX_COUNT)
         .map(|_| {
             let fr_bytes = generate_random_field_element_bytes(&mut rng);
-            TFr::from_bytes(&fr_bytes).unwrap()
+            TFr::from_be_bytes(fr_bytes).unwrap()
         })
         .collect();
 
