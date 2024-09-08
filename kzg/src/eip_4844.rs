@@ -335,12 +335,12 @@ fn compute_r_powers<TG1: G1, TFr: Fr>(
         offset += BYTES_PER_COMMITMENT;
 
         // Copy evaluation challenge
-        let v = zs_fr[i].to_bytes();
+        let v = zs_fr[i].to_be_bytes();
         bytes[offset..(v.len() + offset)].copy_from_slice(&v[..]);
         offset += BYTES_PER_FIELD_ELEMENT;
 
         // Copy polynomial's evaluation value
-        let v = ys_fr[i].to_bytes();
+        let v = ys_fr[i].to_be_bytes();
         bytes[offset..(v.len() + offset)].copy_from_slice(&v[..]);
         offset += BYTES_PER_FIELD_ELEMENT;
 
@@ -357,7 +357,7 @@ fn compute_r_powers<TG1: G1, TFr: Fr>(
 
     // Now let's create the challenge!
     let eval_challenge = hash(&bytes);
-    let r = hash_to_bls_field(&eval_challenge);
+    let r = hash_to_bls_field(eval_challenge);
 
     Ok(compute_powers(&r, n))
 }
@@ -724,7 +724,7 @@ pub fn bytes_to_blob<TFr: Fr>(bytes: &[u8]) -> Result<Vec<TFr>, String> {
 
     bytes
         .chunks(BYTES_PER_FIELD_ELEMENT)
-        .map(TFr::from_bytes)
+        .map(|res| TFr::from_be_bytes(res.try_into().map_err(|_| "Invalid scalar size".to_string())?))
         .collect()
 }
 
@@ -762,8 +762,8 @@ fn fr_batch_inv<TFr: Fr + PartialEq + Copy>(
     Ok(())
 }
 
-pub fn hash_to_bls_field<TFr: Fr>(x: &[u8; BYTES_PER_FIELD_ELEMENT]) -> TFr {
-    TFr::from_bytes_unchecked(x).unwrap()
+pub fn hash_to_bls_field<TFr: Fr>(x: [u8; BYTES_PER_FIELD_ELEMENT]) -> TFr {
+    TFr::from_be_bytes_unchecked(x)
 }
 
 fn compute_challenge<TFr: Fr, TG1: G1>(blob: &[TFr], commitment: &TG1) -> TFr {
@@ -776,7 +776,7 @@ fn compute_challenge<TFr: Fr, TG1: G1>(blob: &[TFr], commitment: &TG1) -> TFr {
     bytes_of_uint64(&mut bytes[24..32], FIELD_ELEMENTS_PER_BLOB as u64);
 
     for (i, field) in blob.iter().enumerate() {
-        let v = field.to_bytes();
+        let v = field.to_be_bytes();
         let size = (32 + i * BYTES_PER_FIELD_ELEMENT)..(32 + (i + 1) * BYTES_PER_FIELD_ELEMENT);
 
         bytes[size].copy_from_slice(&v);
@@ -790,7 +790,7 @@ fn compute_challenge<TFr: Fr, TG1: G1>(blob: &[TFr], commitment: &TG1) -> TFr {
 
     // Now let's create the challenge!
     let eval_challenge = hash(&bytes);
-    hash_to_bls_field(&eval_challenge)
+    hash_to_bls_field(eval_challenge)
 }
 
 pub fn blob_to_polynomial<TFr: Fr, TPoly: Poly<TFr>>(blob: &[TFr]) -> Result<TPoly, String> {

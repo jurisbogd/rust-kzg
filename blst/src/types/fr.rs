@@ -5,9 +5,9 @@ use alloc::string::String;
 use alloc::string::ToString;
 
 use blst::{
-    blst_bendian_from_scalar, blst_fr, blst_fr_add, blst_fr_cneg, blst_fr_eucl_inverse,
+    blst_bendian_from_scalar, blst_lendian_from_scalar, blst_fr, blst_fr_add, blst_fr_cneg, blst_fr_eucl_inverse,
     blst_fr_from_scalar, blst_fr_from_uint64, blst_fr_inverse, blst_fr_mul, blst_fr_sqr,
-    blst_fr_sub, blst_scalar, blst_scalar_fr_check, blst_scalar_from_bendian, blst_scalar_from_fr,
+    blst_fr_sub, blst_scalar, blst_scalar_fr_check, blst_scalar_from_bendian, blst_scalar_from_lendian, blst_scalar_from_fr,
     blst_uint64_from_fr,
 };
 use kzg::eip_4844::BYTES_PER_FIELD_ELEMENT;
@@ -45,6 +45,74 @@ impl Fr for FsFr {
         }
 
         ret
+    }
+
+    fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let mut scalar = blst_scalar::default();
+        let mut fr = blst_fr::default();
+        unsafe {
+            blst_scalar_from_bendian(&mut scalar, bytes.as_ptr());
+            if !blst_scalar_fr_check(&scalar) {
+                return Err("Invalid scalar".to_string());
+            }
+            blst_fr_from_scalar(&mut fr, &scalar);
+        }
+        Ok(Self(fr))
+    }
+
+    fn from_le_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let mut scalar = blst_scalar::default();
+        let mut fr = blst_fr::default();
+        unsafe {
+            blst_scalar_from_lendian(&mut scalar, bytes.as_ptr());
+            if !blst_scalar_fr_check(&scalar) {
+                return Err("Invalid scalar".to_string());
+            }
+            blst_fr_from_scalar(&mut fr, &scalar);
+        }
+        Ok(Self(fr))
+    }
+
+    fn from_be_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        let mut scalar = blst_scalar::default();
+        let mut fr = blst_fr::default();
+        unsafe {
+            blst_scalar_from_bendian(&mut scalar, bytes.as_ptr());
+            blst_fr_from_scalar(&mut fr, &scalar);
+        }
+        Self(fr)
+    }
+
+    fn from_le_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        let mut scalar = blst_scalar::default();
+        let mut fr = blst_fr::default();
+        unsafe {
+            blst_scalar_from_lendian(&mut scalar, bytes.as_ptr());
+            blst_fr_from_scalar(&mut fr, &scalar);
+        }
+        Self(fr)
+    }
+
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let mut scalar = blst_scalar::default();
+        let mut bytes = [0u8; 32];
+        unsafe {
+            blst_scalar_from_fr(&mut scalar, &self.0);
+            blst_bendian_from_scalar(bytes.as_mut_ptr(), &scalar);
+        }
+
+        bytes
+    }
+
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut scalar = blst_scalar::default();
+        let mut bytes = [0u8; 32];
+        unsafe {
+            blst_scalar_from_fr(&mut scalar, &self.0);
+            blst_lendian_from_scalar(bytes.as_mut_ptr(), &scalar);
+        }
+
+        bytes
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
@@ -94,7 +162,7 @@ impl Fr for FsFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_bytes(&bytes)
+        Self::from_be_bytes(bytes.as_slice().try_into().map_err(|_| "Invalid size".to_string())?)
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {
