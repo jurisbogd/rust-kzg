@@ -127,7 +127,7 @@ unsafe fn deserialize_blob(blob: *const Blob) -> Result<Vec<ZFr>, C_KZG_RET> {
         .map(|chunk| {
             let mut bytes = [0u8; BYTES_PER_FIELD_ELEMENT];
             bytes.copy_from_slice(chunk);
-            if let Ok(result) = ZFr::from_bytes(&bytes) {
+            if let Ok(result) = ZFr::from_be_bytes(bytes) {
                 Ok(result)
             } else {
                 Err(C_KZG_RET_BADARGS)
@@ -251,8 +251,8 @@ pub unsafe extern "C" fn verify_kzg_proof(
     proof_bytes: *const Bytes48,
     s: &CKZGSettings,
 ) -> C_KZG_RET {
-    let frz = handle_ckzg_badargs!(ZFr::from_bytes(&(*z_bytes).bytes));
-    let fry = handle_ckzg_badargs!(ZFr::from_bytes(&(*y_bytes).bytes));
+    let frz = handle_ckzg_badargs!(ZFr::from_be_bytes((*z_bytes).bytes));
+    let fry = handle_ckzg_badargs!(ZFr::from_be_bytes((*y_bytes).bytes));
     let g1commitment = handle_ckzg_badargs!(ZG1::from_bytes(&(*commitment_bytes).bytes));
     let g1proof = handle_ckzg_badargs!(ZG1::from_bytes(&(*proof_bytes).bytes));
 
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn compute_kzg_proof(
         Err(err) => return err,
     };
 
-    let frz = match ZFr::from_bytes(&(*z_bytes).bytes) {
+    let frz = match ZFr::from_be_bytes((*z_bytes).bytes) {
         Ok(value) => value,
         Err(_) => return C_KZG_RET_BADARGS,
     };
@@ -402,6 +402,6 @@ pub unsafe extern "C" fn compute_kzg_proof(
     };
 
     (*proof_out).bytes = proof_out_tmp.to_bytes();
-    (*y_out).bytes = fry_tmp.to_bytes();
+    (*y_out).bytes = fry_tmp.to_be_bytes();
     C_KZG_RET_OK
 }

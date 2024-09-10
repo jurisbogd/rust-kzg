@@ -637,7 +637,7 @@ pub fn test_vectors_compute_kzg_proof<
 
         let output = (
             test.get_output_bytes()
-                .and_then(|bytes| TG1::from_bytes(&bytes.0.as_slice()).ok()), // proof
+                .and_then(|bytes| TG1::from_bytes(bytes.0.as_slice()).ok()), // proof
             test.get_output_bytes().and_then(|bytes| {
                 TFr::from_be_bytes(
                     *<&[u8] as TryInto<&[u8; 32]>>::try_into(bytes.1.as_slice()).unwrap(),

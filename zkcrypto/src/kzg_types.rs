@@ -161,7 +161,11 @@ impl KzgFr for ZFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_bytes(&bytes)
+        Self::from_be_bytes(
+            bytes
+                .try_into()
+                .map_err(|_| "Invalid scalar size".to_string())?,
+        )
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {
@@ -198,7 +202,7 @@ impl KzgFr for ZFr {
 
     //testuoti
     fn to_u64_arr(&self) -> [u64; 4] {
-        let bytes = self.to_bytes();
+        let bytes = self.to_be_bytes();
         [
             u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
             u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
@@ -299,6 +303,152 @@ impl KzgFr for ZFr {
             0,
         );
         Scalar256::from_u64(tmp.0)
+    }
+
+    fn from_le_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let mut tmp = Scalar([0, 0, 0, 0]);
+
+        tmp.0[0] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[24..32]).unwrap());
+        tmp.0[1] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[16..24]).unwrap());
+        tmp.0[2] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[8..16]).unwrap());
+        tmp.0[3] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[0..8]).unwrap());
+
+        // Try to subtract the modulus
+        let (_, borrow) = sbb(tmp.0[0], MODULUS.0[0], 0);
+        let (_, borrow) = sbb(tmp.0[1], MODULUS.0[1], borrow);
+        let (_, borrow) = sbb(tmp.0[2], MODULUS.0[2], borrow);
+        let (_, _borrow) = sbb(tmp.0[3], MODULUS.0[3], borrow);
+        let mut tmp2 = Scalar::default();
+
+        tmp2.0[0] = tmp.0[3];
+        tmp2.0[1] = tmp.0[2];
+        tmp2.0[2] = tmp.0[1];
+        tmp2.0[3] = tmp.0[0];
+
+        let is_zero: bool = tmp2.is_zero().into();
+        if !is_zero && !bigint_check_mod_256(&tmp2.0) {
+            return Err("Invalid scalar".to_string());
+        }
+
+        tmp2 *= &R2;
+        Ok(Self { fr: tmp2 })
+    }
+
+    fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let mut tmp = Scalar([0, 0, 0, 0]);
+
+        tmp.0[0] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[0..8]).unwrap());
+        tmp.0[1] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[8..16]).unwrap());
+        tmp.0[2] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[16..24]).unwrap());
+        tmp.0[3] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[24..32]).unwrap());
+
+        // Try to subtract the modulus
+        let (_, borrow) = sbb(tmp.0[0], MODULUS.0[0], 0);
+        let (_, borrow) = sbb(tmp.0[1], MODULUS.0[1], borrow);
+        let (_, borrow) = sbb(tmp.0[2], MODULUS.0[2], borrow);
+        let (_, _borrow) = sbb(tmp.0[3], MODULUS.0[3], borrow);
+        let mut tmp2 = Scalar::default();
+
+        tmp2.0[0] = tmp.0[3];
+        tmp2.0[1] = tmp.0[2];
+        tmp2.0[2] = tmp.0[1];
+        tmp2.0[3] = tmp.0[0];
+
+        let is_zero: bool = tmp2.is_zero().into();
+        if !is_zero && !bigint_check_mod_256(&tmp2.0) {
+            return Err("Invalid scalar".to_string());
+        }
+
+        tmp2 *= &R2;
+        Ok(Self { fr: tmp2 })
+    }
+
+    fn from_le_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        let mut tmp = Scalar([0, 0, 0, 0]);
+
+        tmp.0[0] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[24..32]).unwrap());
+        tmp.0[1] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[16..24]).unwrap());
+        tmp.0[2] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[8..16]).unwrap());
+        tmp.0[3] = u64::from_le_bytes(<[u8; 8]>::try_from(&bytes[0..8]).unwrap());
+
+        // Try to subtract the modulus
+        let (_, borrow) = sbb(tmp.0[0], MODULUS.0[0], 0);
+        let (_, borrow) = sbb(tmp.0[1], MODULUS.0[1], borrow);
+        let (_, borrow) = sbb(tmp.0[2], MODULUS.0[2], borrow);
+        let (_, _borrow) = sbb(tmp.0[3], MODULUS.0[3], borrow);
+        let mut tmp2 = Scalar::default();
+
+        tmp2.0[0] = tmp.0[3];
+        tmp2.0[1] = tmp.0[2];
+        tmp2.0[2] = tmp.0[1];
+        tmp2.0[3] = tmp.0[0];
+
+        tmp2 *= &R2;
+        Self { fr: tmp2 }
+    }
+
+    fn from_be_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        let mut tmp = Scalar([0, 0, 0, 0]);
+
+        tmp.0[0] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[0..8]).unwrap());
+        tmp.0[1] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[8..16]).unwrap());
+        tmp.0[2] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[16..24]).unwrap());
+        tmp.0[3] = u64::from_be_bytes(<[u8; 8]>::try_from(&bytes[24..32]).unwrap());
+
+        // Try to subtract the modulus
+        let (_, borrow) = sbb(tmp.0[0], MODULUS.0[0], 0);
+        let (_, borrow) = sbb(tmp.0[1], MODULUS.0[1], borrow);
+        let (_, borrow) = sbb(tmp.0[2], MODULUS.0[2], borrow);
+        let (_, _borrow) = sbb(tmp.0[3], MODULUS.0[3], borrow);
+        let mut tmp2 = Scalar::default();
+
+        tmp2.0[0] = tmp.0[3];
+        tmp2.0[1] = tmp.0[2];
+        tmp2.0[2] = tmp.0[1];
+        tmp2.0[3] = tmp.0[0];
+
+        tmp2 *= &R2;
+        Self { fr: tmp2 }
+    }
+
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let scalar = self.fr;
+        let tmp = Scalar::montgomery_reduce(
+            scalar.0[0],
+            scalar.0[1],
+            scalar.0[2],
+            scalar.0[3],
+            0,
+            0,
+            0,
+            0,
+        );
+        let mut res = [0; 32];
+        res[24..32].copy_from_slice(&tmp.0[3].to_le_bytes());
+        res[16..24].copy_from_slice(&tmp.0[2].to_le_bytes());
+        res[8..16].copy_from_slice(&tmp.0[1].to_le_bytes());
+        res[0..8].copy_from_slice(&tmp.0[0].to_le_bytes());
+        res
+    }
+
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let scalar = self.fr;
+        let tmp = Scalar::montgomery_reduce(
+            scalar.0[0],
+            scalar.0[1],
+            scalar.0[2],
+            scalar.0[3],
+            0,
+            0,
+            0,
+            0,
+        );
+        let mut res = [0; 32];
+        res[0..8].copy_from_slice(&tmp.0[3].to_be_bytes());
+        res[8..16].copy_from_slice(&tmp.0[2].to_be_bytes());
+        res[16..24].copy_from_slice(&tmp.0[1].to_be_bytes());
+        res[24..32].copy_from_slice(&tmp.0[0].to_be_bytes());
+        res
     }
 }
 

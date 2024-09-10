@@ -146,7 +146,11 @@ impl KzgFr for ArkFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_be_bytes(bytes.try_into().map_err(|_| "Invalid hex length".to_string())?)
+        Self::from_be_bytes(
+            bytes
+                .try_into()
+                .map_err(|_| "Invalid hex length".to_string())?,
+        )
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {

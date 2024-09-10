@@ -20,7 +20,7 @@ fn blob_fr_to_byte_inplace(blob: &[CtFr], inplace: &mut [u8; BYTES_PER_BLOB]) ->
     }
 
     for i in 0..FIELD_ELEMENTS_PER_BLOB {
-        inplace[i * 32..(i + 1) * 32].copy_from_slice(&blob[i].to_bytes());
+        inplace[i * 32..(i + 1) * 32].copy_from_slice(&blob[i].to_be_bytes());
     }
 
     None
@@ -33,7 +33,7 @@ fn blob_fr_to_byte(blob: &[CtFr]) -> Result<[u8; BYTES_PER_BLOB], String> {
 
     let mut blob_bytes = [0u8; BYTES_PER_BLOB];
     for i in 0..FIELD_ELEMENTS_PER_BLOB {
-        blob_bytes[i * 32..(i + 1) * 32].copy_from_slice(&blob[i].to_bytes());
+        blob_bytes[i * 32..(i + 1) * 32].copy_from_slice(&blob[i].to_be_bytes());
     }
 
     Ok(blob_bytes)
@@ -85,16 +85,16 @@ pub fn compute_kzg_proof_mixed(
             let res = ctt_context.ctx.compute_kzg_proof_parallel(
                 &ctt_context.pool,
                 &blob_bytes,
-                &z.to_bytes(),
+                &z.to_be_bytes(),
             );
 
             #[cfg(not(feature = "parallel"))]
             let res = ctt_context
                 .ctx
-                .compute_kzg_proof(&blob_bytes, &z.to_bytes());
+                .compute_kzg_proof(&blob_bytes, &z.to_be_bytes());
 
             match res {
-                Ok((proof, y)) => Ok((CtG1::from_bytes(&proof)?, CtFr::from_bytes(&y)?)),
+                Ok((proof, y)) => Ok((CtG1::from_bytes(&proof)?, CtFr::from_be_bytes(y)?)),
                 Err(x) => Err(x.to_string()),
             }
         }
@@ -147,8 +147,8 @@ pub fn verify_kzg_proof_mixed(
         MixedKzgSettings::Constantine(ctt_context) => {
             let res = ctt_context.ctx.verify_kzg_proof(
                 &commitment.to_bytes(),
-                &z.to_bytes(),
-                &y.to_bytes(),
+                &z.to_be_bytes(),
+                &y.to_be_bytes(),
                 &proof.to_bytes(),
             );
             match res {

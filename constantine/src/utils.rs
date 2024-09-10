@@ -10,7 +10,7 @@ use crate::types::g1::CtG1;
 use crate::types::g2::CtG2;
 
 pub fn generate_trusted_setup(n: usize, secret: [u8; 32usize]) -> (Vec<CtG1>, Vec<CtG2>) {
-    let s = hash_to_bls_field(&secret);
+    let s = hash_to_bls_field(secret);
     let mut s_pow = Fr::one();
 
     let mut s1 = Vec::with_capacity(n);

@@ -138,7 +138,11 @@ impl Fr for CtFr {
 
     fn from_hex(hex: &str) -> Result<Self, String> {
         let bytes = hex::decode(&hex[2..]).unwrap();
-        Self::from_bytes(&bytes)
+        Self::from_be_bytes(
+            bytes
+                .try_into()
+                .map_err(|_| "Invalid scalar size".to_string())?,
+        )
     }
 
     fn from_u64_arr(u: &[u64; 4]) -> Self {
@@ -284,5 +288,84 @@ impl Fr for CtFr {
             constantine::ctt_big255_from_bls12_381_fr(&mut scalar, &self.0);
             Scalar256::from_u64(core::mem::transmute(scalar.limbs))
         }
+    }
+
+    fn from_le_bytes(mut bytes: [u8; 32]) -> Result<Self, String> {
+        let mut ret: Self = Self::default();
+        let mut scalar = constantine::big255::default();
+        bytes.reverse();
+        unsafe {
+            let status = constantine::ctt_bls12_381_deserialize_scalar(&mut scalar, bytes.as_ptr());
+            if status == ctt_codec_scalar_status::cttCodecScalar_ScalarLargerThanCurveOrder {
+                return Err("Invalid scalar".to_string());
+            }
+            constantine::ctt_bls12_381_fr_from_big255(&mut ret.0, &scalar);
+        }
+        Ok(ret)
+    }
+
+    fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, String> {
+        let mut ret: Self = Self::default();
+        let mut scalar = constantine::big255::default();
+        unsafe {
+            let status = constantine::ctt_bls12_381_deserialize_scalar(&mut scalar, bytes.as_ptr());
+            if status == ctt_codec_scalar_status::cttCodecScalar_ScalarLargerThanCurveOrder {
+                return Err("Invalid scalar".to_string());
+            }
+            constantine::ctt_bls12_381_fr_from_big255(&mut ret.0, &scalar);
+        }
+        Ok(ret)
+    }
+
+    fn from_le_bytes_unchecked(mut bytes: [u8; 32]) -> Self {
+        let mut ret = Self::default();
+        let mut scalar = constantine::big255::default();
+        bytes.reverse();
+        unsafe {
+            let _ = constantine::ctt_big255_unmarshalBE(
+                &mut scalar,
+                bytes.as_ptr(),
+                BYTES_PER_FIELD_ELEMENT as isize,
+            );
+            constantine::ctt_bls12_381_fr_from_big255(&mut ret.0, &scalar);
+        }
+        ret
+    }
+
+    fn from_be_bytes_unchecked(bytes: [u8; 32]) -> Self {
+        let mut ret = Self::default();
+        let mut scalar = constantine::big255::default();
+        unsafe {
+            let _ = constantine::ctt_big255_unmarshalBE(
+                &mut scalar,
+                bytes.as_ptr(),
+                BYTES_PER_FIELD_ELEMENT as isize,
+            );
+            constantine::ctt_bls12_381_fr_from_big255(&mut ret.0, &scalar);
+        }
+        ret
+    }
+
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut scalar = constantine::big255::default();
+        let mut bytes = [0u8; 32];
+        unsafe {
+            constantine::ctt_big255_from_bls12_381_fr(&mut scalar, &self.0);
+            let _ = constantine::ctt_bls12_381_serialize_scalar(bytes.as_mut_ptr(), &scalar);
+        }
+        bytes.reverse();
+
+        bytes
+    }
+
+    fn to_be_bytes(&self) -> [u8; 32] {
+        let mut scalar = constantine::big255::default();
+        let mut bytes = [0u8; 32];
+        unsafe {
+            constantine::ctt_big255_from_bls12_381_fr(&mut scalar, &self.0);
+            let _ = constantine::ctt_bls12_381_serialize_scalar(bytes.as_mut_ptr(), &scalar);
+        }
+
+        bytes
     }
 }
