@@ -141,6 +141,89 @@ fn compute_fk20_proofs<
     let mut toeplitz_coeffs = vec![TFr::default(); k2];
     let mut toeplitz_coeffs_fft = vec![TFr::default(); k2];
 
+    let mut toeplitz_coeffs_table = vec![vec![TFr::zero(); k2]; k];
+    let mut toeplitz_coeffs_fft_table = vec![vec![TFr::default(); k2]; k];
+
+    let mut toeplitz_coeffs_long = vec![TFr::zero(); k2 * k];
+    let mut toeplitz_coeffs_fft_long = vec![TFr::zero(); k2 * k];
+
+    for row in 0..FIELD_ELEMENTS_PER_CELL {
+        let offset = row;
+        let stride = FIELD_ELEMENTS_PER_CELL;
+
+        if stride == 0 {
+            return Err("Stride cannot be zero".to_string());
+        }
+
+        let k = n / stride;
+        let k2 = k * 2;
+
+        toeplitz_coeffs_table[row][0] = poly[n - 1 - offset].clone();
+
+        {
+            let mut i = k + 2;
+            let mut j = 2 * stride - offset - 1;
+            while i < k2 {
+                toeplitz_coeffs_table[row][i] = poly[j].clone();
+                i += 1;
+                j += stride;
+            }
+        };
+
+        fr_fft(
+            &mut toeplitz_coeffs_fft_table[row],
+            &toeplitz_coeffs_table[row],
+            s.get_fft_settings(),
+        )?;
+        for j in 0..k2 {
+            coeffs[j][row] = toeplitz_coeffs_fft_table[row][j].clone();
+        }
+    }
+
+    for i in 0..k2 {
+        h_ext_fft[i] = TG1::g1_lincomb(
+            s.get_x_ext_fft_column(i),
+            &coeffs[i],
+            FIELD_ELEMENTS_PER_CELL,
+            None,
+        );
+    }
+
+    let mut h = vec![TG1::identity(); k2];
+    g1_ifft(&mut h, &h_ext_fft, s.get_fft_settings())?;
+
+    for h in h.iter_mut().take(k2).skip(k) {
+        *h = TG1::identity();
+    }
+
+    g1_fft(proofs, &h, s.get_fft_settings())?;
+
+    Ok(())
+}
+
+fn compute_fk20_proofs2<
+    TFr: Fr,
+    TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp> + G1LinComb<TFr, TG1Fp, TG1Affine>,
+    TG2: G2,
+    TFFTSettings: FFTSettings<TFr> + FFTG1<TG1> + FFTFr<TFr>,
+    TPoly: Poly<TFr>,
+    TG1Fp: G1Fp,
+    TG1Affine: G1Affine<TG1, TG1Fp>,
+    TKZGSettings: KZGSettings<TFr, TG1, TG2, TFFTSettings, TPoly, TG1Fp, TG1Affine>,
+>(
+    proofs: &mut [TG1],
+    poly: &[TFr],
+    n: usize,
+    s: &TKZGSettings,
+) -> Result<(), String> {
+    let k = n / FIELD_ELEMENTS_PER_CELL;
+    let k2 = k * 2;
+
+    let mut coeffs = vec![vec![TFr::default(); k]; k2];
+    let mut h_ext_fft = vec![TG1::identity(); k2];
+    let mut toeplitz_coeffs = vec![TFr::default(); k2];
+    let mut toeplitz_coeffs_fft = vec![TFr::default(); k2];
+
     for i in 0..FIELD_ELEMENTS_PER_CELL {
         toeplitz_coeffs_stride(&mut toeplitz_coeffs, poly, n, i, FIELD_ELEMENTS_PER_CELL)?;
         fr_fft(
