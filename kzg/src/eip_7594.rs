@@ -143,9 +143,10 @@ fn compute_fk20_proofs<
 
     for i in 0..FIELD_ELEMENTS_PER_CELL {
         toeplitz_coeffs_stride(&mut toeplitz_coeffs, poly, n, i, FIELD_ELEMENTS_PER_CELL)?;
-        fr_fft(
+        fast_fourier_transform(
             &mut toeplitz_coeffs_fft,
             &toeplitz_coeffs,
+            false,
             s.get_fft_settings(),
         )?;
         for j in 0..k2 {
@@ -905,4 +906,124 @@ pub fn verify_cell_kzg_proof_batch<
         &proof_lincomb,
         power_of_s,
     ))
+}
+
+fn fast_fourier_transform<
+    TFr: Fr,
+    TFFTSettings: FFTSettings<TFr>,
+>(
+    ret: &mut [TFr],
+    data: &[TFr],
+    inverse: bool,
+    s: &TFFTSettings,
+) -> Result<(), String>{
+    if data.len() > s.get_max_width() {
+        return Err(String::from(
+            "Supplied list is longer than the available max width",
+        ));
+    }
+    if data.len() != ret.len() {
+        return Err(format!(
+            "Output length {} doesn't match data length {}",
+            data.len(),
+            ret.len()
+        ));
+    }
+    if !data.len().is_power_of_two() {
+        return Err(String::from("A list with power-of-two length expected"));
+    }
+
+    let stride = s.get_max_width() / data.len();
+
+    let roots = if inverse {
+        s.get_reversed_roots_of_unity()
+    } else {
+        s.get_roots_of_unity()
+    };
+
+    #[cfg(feature = "parallel")]
+    fft_fr_fast_par(ret, data, 1, roots, stride);
+
+    #[cfg(not(feature = "parallel"))]
+    fft_fr_fast(ret, data, 1, roots, stride);
+
+    if inverse {
+        let inv_fr_len = TFr::from_u64(data.len() as u64).inverse();
+        ret.iter_mut().for_each(|f| *f = f.mul(&inv_fr_len));
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "parallel")]
+fn fft_fr_fast_par<TFr: Fr>(
+    ret: &mut [TFr],
+    data: &[TFr],
+    stride: usize,
+    roots: &[TFr],
+    roots_stride: usize,
+) {
+    let half: usize = ret.len() / 2;
+    if half > 0 {
+        // Recurse
+        // Offsetting data by stride = 1 on the first iteration forces the even members to the first half
+        // and the odd members to the second half
+        if half > 256 {
+            let (lo, hi) = ret.split_at_mut(half);
+            rayon::join(
+                || fft_fr_fast_par(lo, data, stride * 2, roots, roots_stride * 2),
+                || fft_fr_fast_par(hi, &data[stride..], stride * 2, roots, roots_stride * 2),
+            );
+        } else {
+            fft_fr_fast(&mut ret[..half], data, stride * 2, roots, roots_stride * 2);
+            fft_fr_fast(
+                &mut ret[half..],
+                &data[stride..],
+                stride * 2,
+                roots,
+                roots_stride * 2,
+            );
+        }
+
+        for i in 0..half {
+            let y_times_root = ret[i + half].mul(&roots[i * roots_stride]);
+            ret[i + half] = ret[i].sub(&y_times_root);
+            ret[i] = ret[i].add(&y_times_root);
+        }
+    } else {
+        // When len = 1, return the permuted element
+        ret[0] = data[0].clone();
+    }
+}
+
+fn fft_fr_fast<TFr: Fr>(
+    ret: &mut [TFr],
+    data: &[TFr],
+    stride: usize,
+    roots: &[TFr],
+    roots_stride: usize,
+) {
+    let half: usize = ret.len() / 2;
+    if half > 0 {
+        // Recurse
+        // Offsetting data by stride = 1 on the first iteration forces the even members to the first half
+        // and the odd members to the second half
+        fft_fr_fast(&mut ret[..half], data, stride * 2, roots, roots_stride * 2);
+        fft_fr_fast(
+            &mut ret[half..],
+            &data[stride..],
+            stride * 2,
+            roots,
+            roots_stride * 2,
+        );
+
+        for i in 0..half {
+            let y_times_root = ret[i + half].mul(&roots[i * roots_stride]);
+            ret[i + half] = ret[i].sub(&y_times_root);
+            ret[i] = ret[i].add(&y_times_root);
+        }
+    } else {
+        // When len = 1, return the permuted element
+        ret[0] = data[0].clone();
+    }
 }

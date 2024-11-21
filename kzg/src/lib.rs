@@ -13,7 +13,7 @@ pub mod eip_7594;
 // pub mod fk20_proof;
 pub mod msm;
 
-pub trait Fr: Default + Clone + PartialEq + Sync {
+pub trait Fr: Default + Clone + PartialEq + Sync + Send {
     fn null() -> Self;
 
     fn zero() -> Self;
