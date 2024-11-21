@@ -6,6 +6,9 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use crate::{
     common_utils::{reverse_bit_order, reverse_bits_limited},
     eip_4844::{
@@ -138,19 +141,29 @@ fn compute_fk20_proofs<
 
     let mut coeffs = vec![vec![TFr::default(); k]; k2];
     let mut h_ext_fft = vec![TG1::identity(); k2];
-    let mut toeplitz_coeffs = vec![TFr::default(); k2];
-    let mut toeplitz_coeffs_fft = vec![TFr::default(); k2];
+    let mut toeplitz_coeffs = vec![vec![TFr::default(); k2]; k];
+    let mut toeplitz_coeffs_fft = vec![vec![TFr::default(); k2]; k];
 
     for i in 0..FIELD_ELEMENTS_PER_CELL {
-        toeplitz_coeffs_stride(&mut toeplitz_coeffs, poly, n, i, FIELD_ELEMENTS_PER_CELL)?;
+        toeplitz_coeffs_stride(&mut toeplitz_coeffs[i], poly, n, i, FIELD_ELEMENTS_PER_CELL)?;
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    for i in 0..FIELD_ELEMENTS_PER_CELL {
         fast_fourier_transform(
-            &mut toeplitz_coeffs_fft,
-            &toeplitz_coeffs,
+            &mut toeplitz_coeffs_fft[i],
+            &toeplitz_coeffs[i],
             false,
             s.get_fft_settings(),
         )?;
+    }
+    
+    #[cfg(feature = "parallel")]
+    fast_fourier_transform_parallel(&mut toeplitz_coeffs_fft, &toeplitz_coeffs, false, s.get_fft_settings())?;
+
+    for i in 0..FIELD_ELEMENTS_PER_CELL {
         for j in 0..k2 {
-            coeffs[j][i] = toeplitz_coeffs_fft[j].clone();
+            coeffs[j][i] = toeplitz_coeffs_fft[i][j].clone();
         }
     }
 
@@ -1026,4 +1039,36 @@ fn fft_fr_fast<TFr: Fr>(
         // When len = 1, return the permuted element
         ret[0] = data[0].clone();
     }
+}
+
+#[cfg(feature = "parallel")]
+fn fast_fourier_transform_parallel<
+    TFr: Fr,
+    TFFTSettings: FFTSettings<TFr>,
+>(
+    rets: &mut [Vec<TFr>],
+    datas: &[Vec<TFr>],
+    inverse: bool,
+    s: &TFFTSettings,
+) -> Result<(), String>{
+    let stride = s.get_max_width() / datas[0].len();
+
+    let roots = if inverse {
+        s.get_reversed_roots_of_unity()
+    } else {
+        s.get_roots_of_unity()
+    };
+
+    //let mut iter = rayon::iter::zip(datas, rets);
+
+    datas.into_par_iter().zip(rets).for_each(|(data, mut ret)| {
+        fft_fr_fast(&mut ret, &data, 1, roots, stride);
+
+        if inverse {
+            let inv_fr_len = TFr::from_u64(data.len() as u64).inverse();
+            ret.iter_mut().for_each(|f| *f = f.mul(&inv_fr_len));
+        }
+    });
+
+    Ok(())
 }
