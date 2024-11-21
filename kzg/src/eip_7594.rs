@@ -2,9 +2,14 @@
 
 extern crate alloc;
 
+use core::option::Iter;
+
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use crate::{
     common_utils::{reverse_bit_order, reverse_bits_limited},
@@ -69,13 +74,6 @@ fn toeplitz_coeffs_stride<TFr: Fr>(
     let k2 = k * 2;
 
     out[0] = input[n - 1 - offset].clone();
-    {
-        let mut i = 1;
-        while i <= k + 1 && i < k2 {
-            out[i] = TFr::zero();
-            i += 1;
-        }
-    };
 
     {
         let mut i = k + 2;
@@ -118,6 +116,20 @@ fn g1_fft<TG1: G1, TFFTSettings: FFTG1<TG1>>(
     Ok(())
 }
 
+fn transpose<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    assert!(!v.is_empty());
+    let len = v[0].len();
+    let mut iters: Vec<_> = v.into_iter().map(|n| n.into_iter()).collect();
+    (0..len)
+        .map(|_| {
+            iters
+                .iter_mut()
+                .map(|n| n.next().unwrap())
+                .collect::<Vec<T>>()
+        })
+        .collect()
+}
+
 fn compute_fk20_proofs<
     TFr: Fr,
     TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp> + G1LinComb<TFr, TG1Fp, TG1Affine>,
@@ -136,57 +148,65 @@ fn compute_fk20_proofs<
     let k = n / FIELD_ELEMENTS_PER_CELL;
     let k2 = k * 2;
 
-    let mut coeffs = vec![vec![TFr::default(); k]; k2];
-    let mut h_ext_fft = vec![TG1::identity(); k2];
-    let mut toeplitz_coeffs = vec![TFr::default(); k2];
-    let mut toeplitz_coeffs_fft = vec![TFr::default(); k2];
-
-    let mut toeplitz_coeffs_table = vec![vec![TFr::zero(); k2]; k];
-    let mut toeplitz_coeffs_fft_table = vec![vec![TFr::default(); k2]; k];
-
-    let mut toeplitz_coeffs_long = vec![TFr::zero(); k2 * k];
-    let mut toeplitz_coeffs_fft_long = vec![TFr::zero(); k2 * k];
+    let fft_settings = s.get_fft_settings();
+    let mut toeplitz_coeffs = vec![vec![TFr::zero(); k2]; k];
 
     for row in 0..FIELD_ELEMENTS_PER_CELL {
-        let offset = row;
-        let stride = FIELD_ELEMENTS_PER_CELL;
-
-        if stride == 0 {
-            return Err("Stride cannot be zero".to_string());
-        }
-
-        let k = n / stride;
-        let k2 = k * 2;
-
-        toeplitz_coeffs_table[row][0] = poly[n - 1 - offset].clone();
-
-        {
-            let mut i = k + 2;
-            let mut j = 2 * stride - offset - 1;
-            while i < k2 {
-                toeplitz_coeffs_table[row][i] = poly[j].clone();
-                i += 1;
-                j += stride;
-            }
-        };
-
-        fr_fft(
-            &mut toeplitz_coeffs_fft_table[row],
-            &toeplitz_coeffs_table[row],
-            s.get_fft_settings(),
+        toeplitz_coeffs_stride(
+            &mut toeplitz_coeffs[row],
+            &poly,
+            n,
+            row,
+            FIELD_ELEMENTS_PER_CELL,
         )?;
-        for j in 0..k2 {
-            coeffs[j][row] = toeplitz_coeffs_fft_table[row][j].clone();
-        }
     }
 
-    for i in 0..k2 {
-        h_ext_fft[i] = TG1::g1_lincomb(
-            s.get_x_ext_fft_column(i),
-            &coeffs[i],
-            FIELD_ELEMENTS_PER_CELL,
-            None,
-        );
+    let mut toeplitz_coeffs_fft = vec![vec![TFr::zero(); k2]; k];
+
+    for row in (0..FIELD_ELEMENTS_PER_CELL).into_iter() {
+        fr_fft(
+            &mut toeplitz_coeffs_fft[row],
+            &toeplitz_coeffs[row],
+            fft_settings,
+        )?;
+    }
+
+    let coeffs = transpose(toeplitz_coeffs_fft);
+
+    let x_ext_fft_columns = (0..k2)
+        .map(|i| s.get_x_ext_fft_column(i))
+        .collect::<Vec<_>>();
+
+    let h_ext_fft: Vec<TG1>;
+
+    #[cfg(feature = "parallel")]
+    {
+        h_ext_fft = (0..k2)
+            .into_par_iter()
+            .map(|i| {
+                TG1::g1_lincomb(
+                    x_ext_fft_columns[i],
+                    &coeffs[i],
+                    FIELD_ELEMENTS_PER_CELL,
+                    None,
+                )
+            })
+            .collect();
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    {
+        h_ext_fft = (0..k2)
+            .into_iter()
+            .map(|i| {
+                TG1::g1_lincomb(
+                    x_ext_fft_columns[i],
+                    &coeffs[i],
+                    FIELD_ELEMENTS_PER_CELL,
+                    None,
+                )
+            })
+            .collect();
     }
 
     let mut h = vec![TG1::identity(); k2];
