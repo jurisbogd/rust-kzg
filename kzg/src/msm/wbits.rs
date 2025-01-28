@@ -16,7 +16,7 @@ pub struct WbitsTable<
     TG1Fp: G1Fp,
     TG1Affine: G1Affine<TG1, TG1Fp>,
 > {
-    table: Vec<byte>,
+    precomputation_table: Vec<TG1Affine>,
 
     g1_marker: PhantomData<TG1>,
     g1_fp_marker: PhantomData<TG1Fp>,
@@ -32,13 +32,11 @@ impl<
     > WbitsTable<TFr, TG1, TG1Fp, TG1Affine>
 {
     pub fn new(points: &[TG1]) -> Result<Option<Self>, String> {
-        let mut table;
+        //Allocate memory for precomputation table
+        let precomputation_table_size = Self::get_precomputation_table_size(points.len());
+        let mut precomputation_table = vec![TG1Affine::default(); precomputation_table_size];
 
         unsafe {
-            //Allocate memory for precomputation table
-            let table_size = blst_p1s_mult_wbits_precompute_sizeof(WBITS, points.len());
-            table = vec![byte::default(); table_size];
-
             //Convert G1 points to blst_p1_affine points
             let points_arr = [points.as_ptr() as *const blst_p1, null()];
             let mut blst_p1_affines = vec![blst_p1_affine::default(); points.len()];
@@ -49,7 +47,7 @@ impl<
             );
 
             g1s_precompute_wbits(
-                table.as_mut_ptr() as *mut TG1Affine,
+                precomputation_table.as_mut_ptr() as *mut TG1Affine,
                 WBITS,
                 blst_p1_affines.as_ptr() as *const TG1Affine,
                 points.len(),
@@ -57,7 +55,7 @@ impl<
         }
 
         Ok(Some(Self {
-            table,
+            precomputation_table,
 
             fr_marker: PhantomData,
             g1_marker: PhantomData,
@@ -77,7 +75,7 @@ impl<
         unsafe {
             mult_wbits_simple_scalars(
                 &mut ret as *mut TG1,
-                self.table.as_ptr() as *const TG1Affine,
+                self.precomputation_table.as_ptr() as *const TG1Affine,
                 WBITS,
                 scalars.len(),
                 scalars.as_ptr() as *const byte,
@@ -92,6 +90,10 @@ impl<
     #[cfg(feature = "parallel")]
     pub fn multiply_parallel(&self, scalars: &[TFr]) -> TG1 {
         self.multiply_sequential(scalars)
+    }
+
+    fn get_precomputation_table_size(npoints: usize) -> usize {
+        npoints << (WBITS - 1)
     }
 }
 
@@ -209,6 +211,14 @@ fn g1_precompute_row_wbits<
         row[i + 1] = row[i / 2].dbl();
     }
 }
+
+// size_t prefix##s_mult_wbits_precompute_sizeof(size_t wbits, size_t npoints) \
+// { return (sizeof(ptype##_affine)*npoints) << (wbits-1); } \
+// fn get_precomputation_table_size<TG1: G1, TG1Fp: G1Fp, TG1Affine: G1Affine<TG1, TG1Fp>>(
+//     npoints: usize,
+// ) -> usize {
+//     size_of::<TG1Affine>() * npoints << (WBITS - 1)
+// }
 
 fn add_affine<TG1: G1 + G1GetFp<TG1Fp>, TG1Fp: G1Fp, TG1Affine: G1Affine<TG1, TG1Fp>>(
     point: &TG1,
