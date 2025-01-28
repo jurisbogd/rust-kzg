@@ -1207,6 +1207,7 @@ dependencies = [
 name = "kzg"
 version = "0.1.0"
 dependencies = [
+ "blst",
  "num_cpus",
  "rayon",
  "sha2 0.10.8",

@@ -23,7 +23,7 @@ rand = "0.8.5"
 default = [
     "std",
     "rand",
-    "bgmw",
+    "wbits",
 ]
 std = [
     "hex/std",
@@ -48,6 +48,9 @@ arkmsm = [
 sppark = [
     "dep:rust-kzg-blst-sppark",
     "kzg/sppark"
+]
+wbits = [
+    "kzg/wbits"
 ]
 c_bindings = []
 
