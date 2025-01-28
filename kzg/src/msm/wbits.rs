@@ -1,8 +1,6 @@
 use crate::{Fr, G1Affine, G1Fp, G1GetFp, G1Mul, Scalar256, G1};
 
-use blst::{
-    blst_p1, blst_p1_affine, blst_p1s_mult_wbits_precompute_sizeof, blst_p1s_to_affine, byte,
-};
+use blst::{blst_p1_affine, byte};
 use core::{marker::PhantomData, ptr::null, slice};
 
 use super::pippenger_utils;
@@ -36,20 +34,14 @@ impl<
         let precomputation_table_size = Self::get_precomputation_table_size(points.len());
         let mut precomputation_table = vec![TG1Affine::default(); precomputation_table_size];
 
-        unsafe {
-            //Convert G1 points to blst_p1_affine points
-            let points_arr = [points.as_ptr() as *const blst_p1, null()];
-            let mut blst_p1_affines = vec![blst_p1_affine::default(); points.len()];
-            blst_p1s_to_affine(
-                blst_p1_affines.as_mut_ptr(),
-                points_arr.as_ptr(),
-                points.len(),
-            );
+        //Convert G1 to G1Affine
+        let affine_points = TG1Affine::into_affines(points);
 
+        unsafe {
             g1s_precompute_wbits(
                 precomputation_table.as_mut_ptr() as *mut TG1Affine,
                 WBITS,
-                blst_p1_affines.as_ptr() as *const TG1Affine,
+                affine_points.as_ptr() as *const TG1Affine,
                 points.len(),
             );
         }
@@ -96,6 +88,49 @@ impl<
         npoints << (WBITS - 1)
     }
 }
+
+// static void ptype##s_to_affine(ptype##_affine dst[], \
+//     const ptype *const points[], size_t npoints) \
+// { \
+// size_t i; \
+// vec##bits *acc, ZZ, ZZZ; \
+// const ptype *point = NULL; \
+// const size_t stride = sizeof(ptype)==sizeof(POINTonE1) ? 1536 : 768; \
+// \
+// while (npoints) { \
+// const ptype *p, *const *walkback; \
+// size_t delta = stride<npoints ? stride : npoints; \
+// \
+// point = *points ? *points++ : point+1; \
+// acc = (vec##bits *)dst; \
+// vec_copy(acc++, point->Z, sizeof(vec##bits)); \
+// for (i = 1; i < delta; i++, acc++) \
+// point = *points ? *points++ : point+1, \
+// mul_##field(acc[0], acc[-1], point->Z); \
+// \
+// --acc; reciprocal_##field(acc[0], acc[0]); \
+// \
+// walkback = points-1, p = point, --delta, dst += delta; \
+// for (i = 0; i < delta; i++, acc--, dst--) { \
+// mul_##field(acc[-1], acc[-1], acc[0]);  /* 1/Z        */\
+// sqr_##field(ZZ, acc[-1]);               /* 1/Z^2      */\
+// mul_##field(ZZZ, ZZ, acc[-1]);          /* 1/Z^3      */\
+// mul_##field(acc[-1], p->Z, acc[0]);     \
+// mul_##field(dst->X,  p->X, ZZ);         /* X = X'/Z^2 */\
+// mul_##field(dst->Y,  p->Y, ZZZ);        /* Y = Y'/Z^3 */\
+// p = (p == *walkback) ? *--walkback : p-1; \
+// } \
+// sqr_##field(ZZ, acc[0]);                    /* 1/Z^2      */\
+// mul_##field(ZZZ, ZZ, acc[0]);               /* 1/Z^3      */\
+// mul_##field(dst->X, p->X, ZZ);              /* X = X'/Z^2 */\
+// mul_##field(dst->Y, p->Y, ZZZ);             /* Y = Y'/Z^3 */\
+// ++delta, dst += delta, npoints -= delta; \
+// } \
+// } \
+// \
+// void prefix##s_to_affine(ptype##_affine dst[], const ptype *const points[], \
+// size_t npoints) \
+// {   ptype##s_to_affine(dst, points, npoints);   }
 
 unsafe fn g1s_precompute_wbits<
     TG1: G1 + G1GetFp<TG1Fp>,
